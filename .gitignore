@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.qa/
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Internal agent instructions and workflow coordination files
+/agents/*.md
+/AGENTS.md
+/CHECKPOINT.md
+/DECISIONS.md
+/TASKS.md
+/review-log.md
+/project-state.md
+/docs/TASKS.md
+/docs/ai-context/*.md

@@ -1,0 +1,12 @@
+{
+  "name": "job-call-workspace",
+  "private": true,
+  "version": "0.2.0",
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "corepack pnpm --filter @job-call/web dev",
+    "build": "corepack pnpm --filter @job-call/web build",
+    "lint": "corepack pnpm --filter @job-call/web lint",
+    "preview": "corepack pnpm --filter @job-call/web preview"
+  }
+}
