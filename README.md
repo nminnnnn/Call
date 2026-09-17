@@ -1,45 +1,51 @@
 # Mạch Web Demo
 
-Web demo cho ứng dụng giao tiếp công việc, được tổ chức dưới dạng pnpm workspace. Bước 3 hiện có màn hình chat đầy đủ, dữ liệu công việc tiếng Việt, UI primitives và lớp repository/service giả lập tách khỏi component.
+Web demo giao tiếp công việc bằng React, Vite và TypeScript. `Job_Call` là repository chính; runtime hiện dùng mock adapters và không có backend production.
 
-## Cách chạy
-
-Máy đã có lệnh `pnpm`:
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Nếu Windows chưa bật pnpm shim nhưng có Node.js/Corepack:
+## Chạy local
 
 ```bash
 corepack pnpm install
 corepack pnpm dev
 ```
 
-Mở địa chỉ Vite hiển thị trong terminal. Các lệnh kiểm tra:
+Mở URL Vite hiển thị trong terminal, sau đó dùng:
+
+- Email: `minhanh@mach.demo`
+- Mật khẩu: `Demo1234!`
+- Hoặc nút **Trải nghiệm demo**.
+
+## Kiểm tra
 
 ```bash
 corepack pnpm lint
 corepack pnpm build
+corepack pnpm --filter @job-call/web check:auth
 corepack pnpm --filter @job-call/web check:visual
+corepack pnpm --filter @job-call/web check:group
 ```
 
-`check:visual` cần dev server đang chạy và dùng Edge đã cài trên máy. Có thể truyền `BASE_URL` nếu server không ở `http://localhost:5175`.
+Các browser check cần dev server đang chạy và Microsoft Edge. Có thể đặt `BASE_URL`; mặc định script dùng URL ghi trong từng script.
 
 ## Cấu trúc
 
 ```text
-apps/
-  web/                    React, Vite, TypeScript, Tailwind, React Router
-packages/
-  contracts/              Kiểu dữ liệu dùng chung giữa UI và adapter
-  design-tokens/          Màu, typography, spacing và focus tokens
-docs/
-  DESIGN_SYSTEM.md        Quy ước giao diện và responsive
+apps/web/                 React/Vite client và mock adapters
+packages/contracts/       Kiểu dữ liệu dùng chung qua data boundary
+packages/design-tokens/   Token giao diện
+docs/DESIGN_SYSTEM.md     Quy ước UI và responsive
+docs/CLIENT_FEEDBACK.md   Mẫu thu phản hồi khách
 ```
 
-Component không import mock data. `WorkspaceShell` chỉ phối hợp `UserRepository`, `ConversationRepository`, `MessageRepository`, `AttachmentService` và `CallService`; dữ liệu demo nằm trong mock implementation để có thể thay bằng API adapter ở giai đoạn backend.
+Component không import seed data trực tiếp. `WorkspaceShell` phối hợp `UserRepository`, `ConversationRepository`, `MessageRepository`, `AttachmentService` và `CallService`; mock implementations nằm trong `apps/web/src/data/mock`.
 
-Chưa có backend, database, realtime, file storage hoặc WebRTC thật. Không có tuyên bố chịu tải 1.000 user/50 concurrent trước khi load test.
+## Tài liệu
+
+- [Project brief](PROJECT_BRIEF.md)
+- [Roadmap](ROADMAP.md)
+- [Demo guide](DEMO_GUIDE.md)
+- [Test plan](TEST_PLAN.md)
+- [API contract định hướng](API_CONTRACT.md)
+- [Client feedback](docs/CLIENT_FEEDBACK.md)
+
+Phiên đăng nhập, chat, file, presence và call hiện đều là demo/mô phỏng. Chưa có auth production, backend, database, realtime, object storage hoặc WebRTC/LiveKit thật.

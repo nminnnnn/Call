@@ -1,6 +1,13 @@
-# API_CONTRACT
+# API CONTRACT — Định hướng Phase 2
 
-API dưới đây là contract định hướng cho backend NestJS.
+Phase 1 chưa gọi các endpoint dưới đây. UI hiện đi qua repository/service interfaces và mock adapters; contract này là ranh giới định hướng cần được xác nhận lại sau phản hồi khách.
+
+## Quy ước chung
+
+- API production dùng HTTPS và auth bằng cookie HttpOnly hoặc cơ chế được duyệt sau threat model; không lưu token nhạy cảm trong local storage.
+- Mọi thao tác dữ liệu riêng tư phải kiểm tra user là thành viên conversation ở backend.
+- Lỗi trả mã ổn định, thông điệp an toàn và request/correlation ID khi phù hợp.
+- Message được lưu bền vững trước khi phát realtime event.
 
 ## Auth
 
@@ -8,6 +15,9 @@ API dưới đây là contract định hướng cho backend NestJS.
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /me`
+- `POST /auth/refresh` chỉ thêm nếu kiến trúc phiên thực tế cần.
+
+Login/logout hiện có trong web là demo-only và không triển khai các endpoint này.
 
 ## Profiles
 
@@ -16,19 +26,25 @@ API dưới đây là contract định hướng cho backend NestJS.
 
 ## Conversations
 
-- `GET /conversations`
+- `GET /conversations?cursor=...`
+- `GET /conversations/:conversationId`
+- `POST /conversations/direct`
 - `POST /conversations/groups`
+- `PATCH /conversations/:conversationId`
+- `PATCH /conversations/:conversationId/members`
+- `POST /conversations/:conversationId/read`
 - `GET /conversations/:conversationId/messages?cursor=...`
 - `POST /conversations/:conversationId/messages`
 
-Quyền: user phải là member của conversation.
-
 ## Messages
 
+- `PATCH /messages/:messageId` — chỉ tác giả được sửa nội dung hợp lệ.
+- `DELETE /messages/:messageId` — chỉ tác giả hoặc policy được duyệt.
 - `POST /messages/:messageId/retry`
 - `POST /messages/:messageId/reactions`
+- `DELETE /messages/:messageId/reactions/:emoji`
 
-Backend production phải lưu message vào PostgreSQL trước rồi mới emit socket event.
+Edit phải giữ metadata reply/attachment/reaction; delete cần quyết định tombstone hay xóa mềm trước khi triển khai.
 
 ## Files
 
@@ -36,7 +52,7 @@ Backend production phải lưu message vào PostgreSQL trước rồi mới emit
 - Client upload trực tiếp lên S3-compatible storage bằng URL ngắn hạn.
 - `POST /files/finalize`
 
-Database chỉ lưu metadata: fileName, mimeType, sizeBytes, storageKey, ownerId, conversationId, messageId.
+Database chỉ lưu metadata như `fileName`, `mimeType`, `sizeBytes`, `storageKey`, `ownerId`, `conversationId` và `messageId`; không lưu base64 trong message.
 
 ## Calls
 
@@ -45,23 +61,19 @@ Database chỉ lưu metadata: fileName, mimeType, sizeBytes, storageKey, ownerId
 - `POST /calls/:callId/end`
 - `POST /calls/:callId/livekit-token`
 
-Backend cấp LiveKit token ngắn hạn. Client không có LiveKit secret.
+Backend cấp LiveKit token ngắn hạn và không đưa LiveKit secret vào client.
 
-## Socket.IO Events
+## Socket.IO events dự kiến
 
-- `conversation:join`
-- `conversation:leave`
-- `message:created`
-- `message:updated`
-- `typing:start`
-- `typing:stop`
+- `conversation:join`, `conversation:leave`
+- `message:created`, `message:updated`, `message:deleted`
+- `typing:start`, `typing:stop`
 - `presence:updated`
-- `call:ringing`
-- `call:ended`
+- `call:ringing`, `call:ended`
 
-Socket phải auth, join room theo conversation, kiểm tra membership và remove room khi user bị xóa khỏi nhóm.
+Socket phải xác thực, kiểm tra membership khi join/event và remove room khi user mất quyền.
 
-## Database Index Tối Thiểu
+## Database index tối thiểu dự kiến
 
 - `conversations(updatedAt)`
 - `conversation_members(userId, conversationId)`

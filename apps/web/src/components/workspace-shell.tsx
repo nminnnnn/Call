@@ -1,5 +1,5 @@
 import type { Attachment, ConversationSummary, Message, Person } from "@job-call/contracts";
-import { MessageCircle, Phone, Settings } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ChatDataSources } from "../data/data-sources";
@@ -12,9 +12,9 @@ import { MessageComposer } from "./chat/message-composer";
 import { MessageList } from "./chat/message-list";
 import { Avatar, Button, Dialog, Drawer, EmptyState, ErrorState, Input, Skeleton, Toast } from "./ui";
 
-type Section = "messages" | "contacts" | "calls" | "settings";
+type Section = "messages" | "contacts";
 
-export function WorkspaceShell({ dataSources, section = "messages" }: { dataSources: ChatDataSources; section?: Section }) {
+export function WorkspaceShell({ dataSources, section = "messages", onLogout }: { dataSources: ChatDataSources; section?: Section; onLogout: () => void }) {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<Person>();
@@ -235,10 +235,10 @@ export function WorkspaceShell({ dataSources, section = "messages" }: { dataSour
 
   return (
     <main className={`workspace ${conversationId ? "workspace--chat-open" : ""}`}>
-      <AppSidebar currentUser={currentUser} />
+      <AppSidebar currentUser={currentUser} onLogout={onLogout} />
       {section === "messages" && <ConversationSidebar conversations={filteredConversations} selectedId={conversationId} query={query} loading={shellLoading} onQuery={setQuery} onCreateGroup={openGroupDialog} onSelect={(id) => navigate(`/messages/${id}`)} />}
       <section className={`workspace__main ${section !== "messages" ? "workspace__main--wide" : ""}`}>
-        {shellError ? <ErrorState title="Không thể tải dữ liệu" onRetry={loadShell} /> : section === "contacts" ? <ContactsPage people={people} conversations={conversations} currentUser={currentUser} loading={shellLoading} error={shellError} onRetry={loadShell} onSelect={(id) => navigate(`/messages/${id}`)} /> : section !== "messages" ? <SectionPlaceholder section={section} /> : !conversationId ? <WelcomePanel /> : messageLoading || (!conversationIsCurrent && !conversationErrorIsCurrent) ? <ConversationLoading /> : conversationErrorIsCurrent ? <ErrorState title="Không thể tải tin nhắn" onRetry={() => void loadConversation(conversationId)} /> : activeConversation ? (
+        {shellError ? <ErrorState title="Không thể tải dữ liệu" onRetry={loadShell} /> : section === "contacts" ? <ContactsPage people={people} conversations={conversations} currentUser={currentUser} loading={shellLoading} error={shellError} onRetry={loadShell} onSelect={(id) => navigate(`/messages/${id}`)} /> : !conversationId ? <WelcomePanel /> : messageLoading || (!conversationIsCurrent && !conversationErrorIsCurrent) ? <ConversationLoading /> : conversationErrorIsCurrent ? <ErrorState title="Không thể tải tin nhắn" onRetry={() => void loadConversation(conversationId)} /> : activeConversation ? (
           <div className="chat-screen">
             <ChatHeader conversation={activeConversation} infoOpen={infoOpen} onBack={() => navigate("/messages")} onToggleInfo={() => setInfoOpen((value) => !value)} onStartCall={(kind) => void startCall(kind)} />
             <MessageList conversation={activeConversation} messages={messages} attachments={attachments} people={peopleById} currentUserId={currentUser?.id ?? ""} loading={messageLoading} typingUsers={typingUsers} onReply={setReplyTo} onReaction={(id, emoji) => void toggleReaction(id, emoji)} onEdit={editMessage} onDelete={deleteMessage} />
@@ -276,10 +276,4 @@ function ConversationLoading() {
 
 function WelcomePanel() {
   return <div className="welcome-panel"><div className="welcome-mark"><MessageCircle size={34} /></div><h2>Sẵn sàng trao đổi công việc</h2><p>Chọn một hội thoại để xem tin nhắn và tiếp tục trao đổi cùng đội ngũ.</p></div>;
-}
-
-function SectionPlaceholder({ section }: { section: Exclude<Section, "messages" | "contacts"> }) {
-  const data = { calls: ["Cuộc gọi", "Lịch sử cuộc gọi sẽ được hoàn thiện ở bước tiếp theo.", Phone], settings: ["Cài đặt", "Thiết lập tài khoản và tùy chọn ứng dụng.", Settings] } as const;
-  const [title, description, Icon] = data[section];
-  return <div className="section-page"><header><span className="section-kicker">Mạch workspace</span><h1>{title}</h1></header><EmptyState title={title} description={description} action={<Button variant="secondary"><Icon size={17} />Khám phá</Button>} /></div>;
 }

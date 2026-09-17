@@ -3,6 +3,14 @@ import { chromium } from "playwright-core";
 const baseUrl = process.env.BASE_URL ?? "http://localhost:5175";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 
+async function newDemoPage(viewport) {
+  const page = await browser.newPage({ viewport });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("mach.demo.session", JSON.stringify({ version: 1, accountId: "u-01", name: "Minh Anh", startedAt: new Date().toISOString() }));
+  });
+  return page;
+}
+
 try {
   await checkInitialFocusNotForced();
   await checkGroupCreate({ name: "desktop", width: 1440, height: 900, checkDrawer: false });
@@ -17,7 +25,7 @@ try {
 }
 
 async function checkInitialFocusNotForced() {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await newDemoPage({ width: 1440, height: 900 });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();
@@ -30,7 +38,7 @@ async function checkInitialFocusNotForced() {
 }
 
 async function checkDialogFocus() {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await newDemoPage({ width: 1440, height: 900 });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();
@@ -59,7 +67,7 @@ async function checkDialogFocus() {
 }
 
 async function checkCreateClearsSearch() {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await newDemoPage({ width: 1440, height: 900 });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();
@@ -83,7 +91,7 @@ async function checkCreateClearsSearch() {
 }
 
 async function checkSubmittingEscapeKeepsFocusInside() {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await newDemoPage({ width: 1440, height: 900 });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();
@@ -105,7 +113,7 @@ async function checkSubmittingEscapeKeepsFocusInside() {
 }
 
 async function checkAbandonedCreateOnRouteChange() {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await newDemoPage({ width: 1440, height: 900 });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();
@@ -128,7 +136,7 @@ async function checkAbandonedCreateOnRouteChange() {
 }
 
 async function checkGroupCreate(testCase) {
-  const page = await browser.newPage({ viewport: { width: testCase.width, height: testCase.height } });
+  const page = await newDemoPage({ width: testCase.width, height: testCase.height });
   try {
     await page.goto(`${baseUrl}/messages`, { waitUntil: "networkidle" });
     await page.locator(".conversation-item").first().waitFor();

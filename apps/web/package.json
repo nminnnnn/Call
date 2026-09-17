@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host 0.0.0.0",
-    "check:visual": "node scripts/visual-check.mjs"
+    "check:visual": "node scripts/visual-check.mjs",
+    "check:auth": "node scripts/auth-check.mjs",
+    "check:group": "node scripts/group-create-check.mjs"
   },
   "dependencies": {
     "@job-call/contracts": "workspace:*",

@@ -17,6 +17,9 @@ const cases = [
 let failed = false;
 for (const testCase of cases) {
   const page = await browser.newPage({ viewport: testCase.viewport });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("mach.demo.session", JSON.stringify({ version: 1, accountId: "u-01", name: "Minh Anh", startedAt: new Date().toISOString() }));
+  });
   await page.goto(`${baseUrl}${testCase.path}`, { waitUntil: "networkidle" });
   await page.waitForSelector(testCase.path === "/messages" ? ".conversation-item" : ".message, .ui-state");
   await page.waitForTimeout(450);
