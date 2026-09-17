@@ -1,7 +1,14 @@
 node_modules/
 dist/
+.vercel/
 *.tsbuildinfo
 .qa/
+
+# Local logs and test reports
+*.log
+coverage/
+playwright-report/
+test-results/
 
 # Local environment files and secrets
 .env

@@ -2,6 +2,7 @@ export type PresenceStatus = "online" | "away" | "offline";
 export type ConversationKind = "direct" | "group";
 export type MessageDeliveryStatus = "sending" | "sent" | "read" | "failed";
 export type AttachmentKind = "file" | "image";
+export type GroupMemberRole = "owner" | "admin" | "member";
 
 export interface Person {
   id: string;
@@ -24,12 +25,25 @@ export interface ConversationSummary {
   unreadCount: number;
   lastReadMessageId?: string;
   typingUserIds: string[];
+  memberRoles?: Record<string, GroupMemberRole>;
   isPinned?: boolean;
 }
 
 export interface CreateGroupInput {
   title: string;
   memberIds: string[];
+}
+
+export interface UpdateGroupInput {
+  conversationId: string;
+  title: string;
+}
+
+export interface UpdateGroupMembersInput {
+  conversationId: string;
+  addUserIds?: string[];
+  removeUserIds?: string[];
+  roles?: Record<string, GroupMemberRole>;
 }
 
 export interface MessageReaction {
@@ -70,6 +84,12 @@ export interface SendMessageInput {
   body: string;
   replyToId?: string;
   attachmentIds?: string[];
+  simulateFailure?: boolean;
+}
+
+export interface SimulatedReplyResult {
+  message: Message;
+  conversation: ConversationSummary;
 }
 
 export interface UpdateMessageInput {

@@ -1,4 +1,4 @@
-import type { DeleteMessageResult, Message, MessagePage, SendMessageInput, UpdateMessageInput } from "@job-call/contracts";
+import type { ConversationSummary, DeleteMessageResult, Message, MessagePage, SendMessageInput, SimulatedReplyResult, UpdateMessageInput } from "@job-call/contracts";
 
 export interface MessageRepository {
   list(conversationId: string, cursor?: string): Promise<MessagePage>;
@@ -6,4 +6,6 @@ export interface MessageRepository {
   update(input: UpdateMessageInput): Promise<Message>;
   deleteMessage(messageId: string): Promise<DeleteMessageResult>;
   toggleReaction(messageId: string, emoji: string): Promise<Message>;
+  setSimulatedTyping(conversationId: string, active: boolean): Promise<ConversationSummary>;
+  simulateReply(conversationId: string): Promise<SimulatedReplyResult>;
 }

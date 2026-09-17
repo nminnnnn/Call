@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { clearDemoSession, readDemoSession, safeDemoDestination, type DemoSession } from "./auth/demo-session";
+import { clearDemoDrafts } from "./data/demo-drafts";
+import { clearPersistedMockStore } from "./data/mock/mock-store";
 import { LoginPage } from "./components/auth/login-page";
 import { WorkspaceShell } from "./components/workspace-shell";
 import { createDataSources } from "./data/create-data-sources";
@@ -19,15 +21,21 @@ export function App() {
     navigate("/login", { replace: true });
   }
 
+  function resetDemo() {
+    clearDemoDrafts();
+    clearPersistedMockStore();
+    window.location.assign("/messages");
+  }
+
   const protect = (content: ReactNode) => <ProtectedRoute session={session}>{content}</ProtectedRoute>;
 
   return (
     <Routes>
       <Route path="/" element={<Navigate to={session ? "/messages" : "/login"} replace />} />
       <Route path="/login" element={session ? <Navigate to={safeDemoDestination(new URLSearchParams(location.search).get("next"))} replace /> : <LoginPage onLogin={setSession} />} />
-      <Route path="/messages" element={protect(<WorkspaceShell dataSources={dataSources} onLogout={logout} />)} />
-      <Route path="/messages/:conversationId" element={protect(<WorkspaceShell dataSources={dataSources} onLogout={logout} />)} />
-      <Route path="/contacts" element={protect(<WorkspaceShell dataSources={dataSources} section="contacts" onLogout={logout} />)} />
+      <Route path="/messages" element={protect(<WorkspaceShell dataSources={dataSources} onLogout={logout} onResetDemo={resetDemo} />)} />
+      <Route path="/messages/:conversationId" element={protect(<WorkspaceShell dataSources={dataSources} onLogout={logout} onResetDemo={resetDemo} />)} />
+      <Route path="/contacts" element={protect(<WorkspaceShell dataSources={dataSources} section="contacts" onLogout={logout} onResetDemo={resetDemo} />)} />
       <Route path="*" element={<Navigate to={session ? "/messages" : "/login"} replace />} />
     </Routes>
   );

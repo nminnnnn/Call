@@ -1,8 +1,9 @@
-import type { Attachment, ConversationSummary, Message, Person } from "@job-call/contracts";
+import type { Attachment, ConversationSummary, Message, Person, UpdateGroupMembersInput } from "@job-call/contracts";
 import { MessageCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ChatDataSources } from "../data/data-sources";
+import { loadDemoDrafts, persistDemoDrafts } from "../data/demo-drafts";
 import { AppSidebar } from "./chat/app-sidebar";
 import { ChatHeader } from "./chat/chat-header";
 import { ConversationInfoContent, ConversationInfoPanel } from "./chat/conversation-info-panel";
@@ -14,7 +15,7 @@ import { Avatar, Button, Dialog, Drawer, EmptyState, ErrorState, Input, Skeleton
 
 type Section = "messages" | "contacts";
 
-export function WorkspaceShell({ dataSources, section = "messages", onLogout }: { dataSources: ChatDataSources; section?: Section; onLogout: () => void }) {
+export function WorkspaceShell({ dataSources, section = "messages", onLogout, onResetDemo }: { dataSources: ChatDataSources; section?: Section; onLogout: () => void; onResetDemo: () => void }) {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<Person>();
@@ -36,11 +37,19 @@ export function WorkspaceShell({ dataSources, section = "messages", onLogout }: 
   const [groupSubmitting, setGroupSubmitting] = useState(false);
   const [groupError, setGroupError] = useState("");
   const [toast, setToast] = useState("");
+  const [drafts, setDrafts] = useState<Map<string, string>>(() => loadDemoDrafts());
+  const pendingSendsRef = useRef(new Map<string, { body: string; replyToId?: string; attachments: Attachment[] }>());
+  const simulationTimersRef = useRef(new Map<string, number[]>());
   const conversationRequestRef = useRef(0);
   const currentConversationIdRef = useRef(conversationId);
   const conversationErrorIdRef = useRef<string | undefined>(undefined);
   const groupCreateRequestRef = useRef(false);
   currentConversationIdRef.current = conversationId;
+
+  useEffect(() => () => {
+    simulationTimersRef.current.forEach((timers) => timers.forEach((timer) => window.clearTimeout(timer)));
+    simulationTimersRef.current.clear();
+  }, []);
 
   const loadShell = useCallback(async () => {
     setShellError(false); setShellLoading(true);
@@ -105,7 +114,7 @@ export function WorkspaceShell({ dataSources, section = "messages", onLogout }: 
   const conversationIsCurrent = Boolean(conversationId && activeConversation?.id === conversationId);
   const conversationErrorIsCurrent = Boolean(conversationId && messageError && conversationErrorIdRef.current === conversationId);
 
-  async function sendMessage(body: string, replyToId: string | undefined, prepared: Attachment[]) {
+  async function sendMessage(body: string, replyToId: string | undefined, prepared: Attachment[], simulateFailure: boolean) {
     if (!activeConversation || !currentUser) return;
     const optimistic: Message = {
       id: `local-${crypto.randomUUID()}`, conversationId: activeConversation.id, authorId: currentUser.id,
@@ -114,17 +123,72 @@ export function WorkspaceShell({ dataSources, section = "messages", onLogout }: 
     };
     setAttachments((items) => new Map([...items, ...prepared.map((item) => [item.id, item] as const)]));
     setMessages((items) => [...items, optimistic]);
+    pendingSendsRef.current.set(optimistic.id, { body, replyToId, attachments: prepared });
     try {
-      const sent = await dataSources.messages.send({ conversationId: activeConversation.id, body, replyToId, attachmentIds: optimistic.attachmentIds });
+      const sent = await dataSources.messages.send({ conversationId: activeConversation.id, body, replyToId, attachmentIds: optimistic.attachmentIds, simulateFailure });
       setMessages((items) => items.map((item) => item.id === optimistic.id ? sent : item));
+      pendingSendsRef.current.delete(optimistic.id);
       const list = await dataSources.conversations.list();
       setConversations(list);
       setActiveConversation((item) => item ? { ...item, lastMessage: body || "Đã gửi một tệp đính kèm", updatedAt: sent.createdAt, unreadCount: 0 } : item);
       setToast("Tin nhắn đã được gửi");
+      scheduleSimulatedResponse(sent.conversationId);
     } catch {
       setMessages((items) => items.map((item) => item.id === optimistic.id ? { ...item, status: "failed" } : item));
       setToast("Không gửi được tin nhắn");
     }
+  }
+
+  async function retryMessage(messageId: string) {
+    const pending = pendingSendsRef.current.get(messageId);
+    const message = messages.find((item) => item.id === messageId);
+    if (!pending || !message) return;
+    setMessages((items) => items.map((item) => item.id === messageId ? { ...item, status: "sending" } : item));
+    try {
+      const sent = await dataSources.messages.send({ conversationId: message.conversationId, body: pending.body, replyToId: pending.replyToId, attachmentIds: pending.attachments.map((item) => item.id) });
+      pendingSendsRef.current.delete(messageId);
+      setMessages((items) => items.map((item) => item.id === messageId ? sent : item));
+      const list = await dataSources.conversations.list();
+      setConversations(list);
+      setActiveConversation((item) => list.find((conversation) => conversation.id === item?.id) ?? item);
+      setToast("Tin nhắn đã được gửi lại");
+      scheduleSimulatedResponse(sent.conversationId);
+    } catch {
+      setMessages((items) => items.map((item) => item.id === messageId ? { ...item, status: "failed" } : item));
+      setToast("Vẫn chưa thể gửi tin nhắn. Bạn có thể thử lại.");
+    }
+  }
+
+  function scheduleSimulatedResponse(targetConversationId: string) {
+    simulationTimersRef.current.get(targetConversationId)?.forEach((timer) => window.clearTimeout(timer));
+    const typingTimer = window.setTimeout(() => {
+      void dataSources.messages.setSimulatedTyping(targetConversationId, true).then((conversation) => {
+        setConversations((items) => items.map((item) => item.id === conversation.id ? conversation : item));
+        if (currentConversationIdRef.current === targetConversationId) setActiveConversation(conversation);
+      });
+    }, 500);
+    const replyTimer = window.setTimeout(() => {
+      void dataSources.messages.simulateReply(targetConversationId).then(async ({ message, conversation }) => {
+        const active = currentConversationIdRef.current === targetConversationId;
+        setConversations((items) => items.map((item) => item.id === conversation.id ? conversation : item).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+        if (active) {
+          setMessages((items) => [...items, message]);
+          const read = await dataSources.conversations.markAsRead(targetConversationId);
+          if (currentConversationIdRef.current === targetConversationId) setActiveConversation(read);
+          setConversations((items) => items.map((item) => item.id === read.id ? read : item));
+        }
+      });
+    }, 1_500);
+    simulationTimersRef.current.set(targetConversationId, [typingTimer, replyTimer]);
+  }
+
+  function updateDraft(conversationKey: string, value: string) {
+    setDrafts((current) => {
+      const next = new Map(current);
+      if (value) next.set(conversationKey, value); else next.delete(conversationKey);
+      persistDemoDrafts(next);
+      return next;
+    });
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -166,6 +230,39 @@ export function WorkspaceShell({ dataSources, section = "messages", onLogout }: 
     if (!activeConversation) return;
     await dataSources.calls.start(activeConversation.id, kind);
     setToast(`${kind === "video" ? "Video call" : "Cuộc gọi thoại"} đang đổ chuông (mô phỏng)`);
+  }
+
+  async function prepareAttachment(file: File) {
+    return dataSources.attachments.prepare(file);
+  }
+
+  async function startDirectConversation(personId: string) {
+    try {
+      const conversation = await dataSources.conversations.getOrCreateDirect(personId);
+      setConversations((items) => [conversation, ...items.filter((item) => item.id !== conversation.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      navigate(`/messages/${conversation.id}`);
+    } catch {
+      setToast("Không thể bắt đầu cuộc trò chuyện lúc này.");
+    }
+  }
+
+  function applyUpdatedConversation(updated: ConversationSummary) {
+    setConversations((items) => items.map((item) => item.id === updated.id ? updated : item).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    setActiveConversation((conversation) => conversation?.id === updated.id ? updated : conversation);
+  }
+
+  async function renameGroup(title: string) {
+    if (!activeConversation) return;
+    const updated = await dataSources.conversations.updateGroup({ conversationId: activeConversation.id, title });
+    applyUpdatedConversation(updated);
+    setToast("Đã đổi tên nhóm");
+  }
+
+  async function manageGroupMembers(input: Omit<UpdateGroupMembersInput, "conversationId">) {
+    if (!activeConversation) return;
+    const updated = await dataSources.conversations.updateGroupMembers({ conversationId: activeConversation.id, ...input });
+    applyUpdatedConversation(updated);
+    setToast("Đã cập nhật thành viên nhóm");
   }
 
   function openGroupDialog() {
@@ -235,19 +332,19 @@ export function WorkspaceShell({ dataSources, section = "messages", onLogout }: 
 
   return (
     <main className={`workspace ${conversationId ? "workspace--chat-open" : ""}`}>
-      <AppSidebar currentUser={currentUser} onLogout={onLogout} />
+      <AppSidebar currentUser={currentUser} onLogout={onLogout} onResetDemo={onResetDemo} />
       {section === "messages" && <ConversationSidebar conversations={filteredConversations} selectedId={conversationId} query={query} loading={shellLoading} onQuery={setQuery} onCreateGroup={openGroupDialog} onSelect={(id) => navigate(`/messages/${id}`)} />}
       <section className={`workspace__main ${section !== "messages" ? "workspace__main--wide" : ""}`}>
-        {shellError ? <ErrorState title="Không thể tải dữ liệu" onRetry={loadShell} /> : section === "contacts" ? <ContactsPage people={people} conversations={conversations} currentUser={currentUser} loading={shellLoading} error={shellError} onRetry={loadShell} onSelect={(id) => navigate(`/messages/${id}`)} /> : !conversationId ? <WelcomePanel /> : messageLoading || (!conversationIsCurrent && !conversationErrorIsCurrent) ? <ConversationLoading /> : conversationErrorIsCurrent ? <ErrorState title="Không thể tải tin nhắn" onRetry={() => void loadConversation(conversationId)} /> : activeConversation ? (
+        {shellError ? <ErrorState title="Không thể tải dữ liệu" onRetry={loadShell} /> : section === "contacts" ? <ContactsPage people={people} conversations={conversations} currentUser={currentUser} loading={shellLoading} error={shellError} onRetry={loadShell} onSelect={(id) => navigate(`/messages/${id}`)} onStartChat={(personId) => void startDirectConversation(personId)} /> : !conversationId ? <WelcomePanel /> : messageLoading || (!conversationIsCurrent && !conversationErrorIsCurrent) ? <ConversationLoading /> : conversationErrorIsCurrent ? <ErrorState title="Không thể tải tin nhắn" onRetry={() => void loadConversation(conversationId)} /> : activeConversation ? (
           <div className="chat-screen">
             <ChatHeader conversation={activeConversation} infoOpen={infoOpen} onBack={() => navigate("/messages")} onToggleInfo={() => setInfoOpen((value) => !value)} onStartCall={(kind) => void startCall(kind)} />
-            <MessageList conversation={activeConversation} messages={messages} attachments={attachments} people={peopleById} currentUserId={currentUser?.id ?? ""} loading={messageLoading} typingUsers={typingUsers} onReply={setReplyTo} onReaction={(id, emoji) => void toggleReaction(id, emoji)} onEdit={editMessage} onDelete={deleteMessage} />
-            <MessageComposer replyTo={replyTo} replyAuthor={replyTo ? peopleById.get(replyTo.authorId) : undefined} onCancelReply={() => setReplyTo(undefined)} onPrepareAttachment={(file) => dataSources.attachments.prepare(file)} onSend={sendMessage} />
+            <MessageList conversation={activeConversation} messages={messages} attachments={attachments} people={peopleById} currentUserId={currentUser?.id ?? ""} loading={messageLoading} typingUsers={typingUsers} onReply={setReplyTo} onReaction={(id, emoji) => void toggleReaction(id, emoji)} onEdit={editMessage} onDelete={deleteMessage} onRetry={retryMessage} />
+            <MessageComposer key={activeConversation.id} draft={drafts.get(activeConversation.id) ?? ""} replyTo={replyTo} replyAuthor={replyTo ? peopleById.get(replyTo.authorId) : undefined} onCancelReply={() => setReplyTo(undefined)} onDraftChange={(value) => updateDraft(activeConversation.id, value)} onPrepareAttachment={prepareAttachment} onSend={sendMessage} />
           </div>
         ) : <div className="chat-screen"><div className="message-feed"><EmptyState title="Không tìm thấy hội thoại" description="Hội thoại có thể đã bị xóa hoặc đường dẫn không còn hợp lệ." /></div></div>}
       </section>
-      {section === "messages" && conversationIsCurrent && activeConversation && infoOpen && <ConversationInfoPanel conversation={activeConversation} members={members} attachments={conversationAttachments} onClose={() => setInfoOpen(false)} />}
-      <Drawer open={Boolean(conversationIsCurrent && infoOpen)} title="Thông tin hội thoại" onClose={() => setInfoOpen(false)}>{conversationIsCurrent && activeConversation && <ConversationInfoContent conversation={activeConversation} members={members} attachments={conversationAttachments} />}</Drawer>
+      {section === "messages" && conversationIsCurrent && activeConversation && infoOpen && <ConversationInfoPanel conversation={activeConversation} members={members} attachments={conversationAttachments} currentUserId={currentUser?.id ?? ""} availableMembers={people.filter((person) => !activeConversation.participantIds.includes(person.id))} onRename={renameGroup} onManageMembers={manageGroupMembers} onClose={() => setInfoOpen(false)} />}
+      <Drawer open={Boolean(conversationIsCurrent && infoOpen)} title="Thông tin hội thoại" onClose={() => setInfoOpen(false)}>{conversationIsCurrent && activeConversation && <ConversationInfoContent conversation={activeConversation} members={members} attachments={conversationAttachments} currentUserId={currentUser?.id ?? ""} availableMembers={people.filter((person) => !activeConversation.participantIds.includes(person.id))} onRename={renameGroup} onManageMembers={manageGroupMembers} />}</Drawer>
       <Dialog open={groupOpen} title="Tạo nhóm mới" onClose={closeGroupDialog}>
         <form className="group-dialog" onSubmit={createGroup}>
           <Input label="Tên nhóm" placeholder="Ví dụ: Ra mắt sản phẩm" value={groupName} onChange={(event) => { setGroupName(event.target.value); setGroupError(""); }} autoFocus disabled={groupSubmitting} aria-invalid={Boolean(groupError)} aria-describedby="group-creation-help group-creation-error" />

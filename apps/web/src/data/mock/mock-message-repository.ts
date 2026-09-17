@@ -1,7 +1,7 @@
 import type { Message, UpdateMessageInput, SendMessageInput } from "@job-call/contracts";
 import type { MessageRepository } from "../message-repository";
 import { currentUserId } from "./seed-data";
-import { delay, type MockStore } from "./mock-store";
+import { delay, persistMockStore, type MockStore } from "./mock-store";
 
 const PAGE_SIZE = 50;
 
@@ -18,6 +18,10 @@ export class MockMessageRepository implements MessageRepository {
   }
 
   async send(input: SendMessageInput) {
+    if (input.simulateFailure) {
+      await delay(undefined, 420);
+      throw new Error("Simulated send failure");
+    }
     const message: Message = {
       id: crypto.randomUUID(),
       conversationId: input.conversationId,
@@ -36,6 +40,7 @@ export class MockMessageRepository implements MessageRepository {
       conversation.updatedAt = message.createdAt;
       conversation.unreadCount = 0;
     }
+    persistMockStore(this.store);
     return delay(message, 420);
   }
 
@@ -46,6 +51,7 @@ export class MockMessageRepository implements MessageRepository {
     message.body = body;
     message.editedAt = new Date().toISOString();
     this.refreshConversationPreview(message.conversationId);
+    persistMockStore(this.store);
     return delay(message, 220);
   }
 
@@ -53,6 +59,7 @@ export class MockMessageRepository implements MessageRepository {
     const message = this.requireOwnMessage(messageId);
     this.store.messages = this.store.messages.filter((item) => item.id !== messageId);
     const conversation = this.refreshConversationPreview(message.conversationId);
+    persistMockStore(this.store);
     return delay({ messageId, conversationId: message.conversationId, conversation }, 220);
   }
 
@@ -63,7 +70,45 @@ export class MockMessageRepository implements MessageRepository {
     if (!reaction) message.reactions.push({ emoji, userIds: [currentUserId] });
     else if (reaction.userIds.includes(currentUserId)) reaction.userIds = reaction.userIds.filter((id) => id !== currentUserId);
     else reaction.userIds.push(currentUserId);
+    persistMockStore(this.store);
     return delay(message, 140);
+  }
+
+  async setSimulatedTyping(conversationId: string, active: boolean) {
+    const conversation = this.requireConversation(conversationId);
+    const responderId = this.responderId(conversationId);
+    conversation.typingUserIds = active && responderId ? [responderId] : [];
+    persistMockStore(this.store);
+    return delay(conversation, 100);
+  }
+
+  async simulateReply(conversationId: string) {
+    const conversation = this.requireConversation(conversationId);
+    const responderId = this.responderId(conversationId);
+    if (!responderId) throw new Error("No simulated responder is available");
+    const replies = [
+      "Mình đã nhận được, mình sẽ cập nhật lại trong ít phút.",
+      "Cảm ơn, phần này đã rõ. Mình sẽ kiểm tra và phản hồi tiếp.",
+      "Đã ghi nhận. Mình đồng ý với hướng xử lý này.",
+    ];
+    const priorReplyCount = this.store.messages.filter((message) => message.conversationId === conversationId && message.authorId === responderId && message.id.startsWith("sim-" )).length;
+    const message: Message = {
+      id: `sim-${crypto.randomUUID()}`,
+      conversationId,
+      authorId: responderId,
+      body: replies[priorReplyCount % replies.length],
+      createdAt: new Date().toISOString(),
+      status: "sent",
+      attachmentIds: [],
+      reactions: [],
+    };
+    this.store.messages.push(message);
+    conversation.typingUserIds = [];
+    conversation.lastMessage = message.body;
+    conversation.updatedAt = message.createdAt;
+    conversation.unreadCount += 1;
+    persistMockStore(this.store);
+    return delay({ message, conversation }, 260);
   }
 
   private requireOwnMessage(messageId: string) {
@@ -82,5 +127,15 @@ export class MockMessageRepository implements MessageRepository {
     conversation.lastMessage = latest ? latest.body || (latest.attachmentIds.length ? "Đã gửi một tệp đính kèm" : "Tin nhắn mới") : "Chưa có tin nhắn";
     conversation.updatedAt = latest?.createdAt ?? new Date().toISOString();
     return conversation;
+  }
+
+  private requireConversation(conversationId: string) {
+    const conversation = this.store.conversations.find((item) => item.id === conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+    return conversation;
+  }
+
+  private responderId(conversationId: string) {
+    return this.requireConversation(conversationId).participantIds.find((id) => id !== currentUserId);
   }
 }
